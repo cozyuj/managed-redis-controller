@@ -1,0 +1,4 @@
+## Append samples of your project ##
+resources:
+- redis_v1_managedredis.yaml
+# +kubebuilder:scaffold:manifestskustomizesamples

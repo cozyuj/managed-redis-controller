@@ -1,0 +1,9 @@
+apiVersion: redis.redis-youjin.com/v1
+kind: ManagedRedis
+metadata:
+  labels:
+    app.kubernetes.io/name: managed-redis-controller
+    app.kubernetes.io/managed-by: kustomize
+  name: managedredis-sample
+spec:
+  # TODO(user): Add fields here

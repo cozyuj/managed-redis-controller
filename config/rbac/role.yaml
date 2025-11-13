@@ -1,0 +1,32 @@
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: manager-role
+rules:
+- apiGroups:
+  - redis.redis-youjin.com
+  resources:
+  - managedredis
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - redis.redis-youjin.com
+  resources:
+  - managedredis/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - redis.redis-youjin.com
+  resources:
+  - managedredis/status
+  verbs:
+  - get
+  - patch
+  - update
