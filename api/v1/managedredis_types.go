@@ -32,11 +32,16 @@ type ManagedRedisSpec struct {
 
 	// foo is an example field of ManagedRedis. Edit managedredis_types.go to remove/update
 	// +optional
-	Foo *string `json:"foo,omitempty"`
+	Version  string `json:"version,omitempty"`
+	Replicas int32  `json:"replicas,omitempty"`
+
+	// Foo *string `json:"foo,omitempty"`
 }
 
 // ManagedRedisStatus defines the observed state of ManagedRedis.
 type ManagedRedisStatus struct {
+	Phase    string `json:"phase,omitempty"`
+	Endpoint string `json:"endpoint,omitempty"`
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
@@ -71,7 +76,7 @@ type ManagedRedis struct {
 
 	// spec defines the desired state of ManagedRedis
 	// +required
-	Spec ManagedRedisSpec `json:"spec"`
+	Spec ManagedRedisSpec `json:"spec,omitempty"` //값이 비어있을 때 json 에서 필드 생략
 
 	// status defines the observed state of ManagedRedis
 	// +optional

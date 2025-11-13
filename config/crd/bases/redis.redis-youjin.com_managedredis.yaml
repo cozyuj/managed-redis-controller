@@ -39,7 +39,10 @@ spec:
           spec:
             description: spec defines the desired state of ManagedRedis
             properties:
-              foo:
+              replicas:
+                format: int32
+                type: integer
+              version:
                 description: foo is an example field of ManagedRedis. Edit managedredis_types.go
                   to remove/update
                 type: string
@@ -116,6 +119,10 @@ spec:
                 x-kubernetes-list-map-keys:
                 - type
                 x-kubernetes-list-type: map
+              endpoint:
+                type: string
+              phase:
+                type: string
             type: object
         required:
         - spec
