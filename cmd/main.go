@@ -19,6 +19,7 @@ package main
 import (
 	"crypto/tls"
 	"flag"
+	"fmt"
 	"os"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
@@ -154,6 +155,17 @@ func main() {
 		metricsServerOptions.KeyName = metricsCertKey
 	}
 
+	cfg := ctrl.GetConfigOrDie()
+	fmt.Println("=== Kubernetes Config Check ===")
+	fmt.Println("API Server URL:", cfg.Host)
+	if len(cfg.BearerToken) > 0 {
+		fmt.Println("Bearer Token (first 10 chars):", cfg.BearerToken[:10])
+	} else {
+		fmt.Println("Bearer Token: <none>")
+	}
+	fmt.Println("TLS CA Data:", len(cfg.CAData))
+	fmt.Println("=== End of Config Check ===")
+
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme:                 scheme,
 		Metrics:                metricsServerOptions,
@@ -179,8 +191,9 @@ func main() {
 	}
 
 	if err := (&controller.ManagedRedisReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
+		Client:     mgr.GetClient(),
+		Scheme:     mgr.GetScheme(),
+		APIBaseURL: "http://localhost:4000",
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "ManagedRedis")
 		os.Exit(1)

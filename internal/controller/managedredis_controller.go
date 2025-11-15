@@ -1,10 +1,14 @@
 package controller
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"net/http"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -19,7 +23,8 @@ import (
 // ManagedRedisReconciler reconciles a ManagedRedis object
 type ManagedRedisReconciler struct {
 	client.Client
-	Scheme *runtime.Scheme
+	Scheme     *runtime.Scheme
+	APIBaseURL string
 }
 
 // +kubebuilder:rbac:groups=redis.redis-youjin.com,resources=managedredis,verbs=get;list;watch;create;update;patch;delete
@@ -31,20 +36,19 @@ type ManagedRedisReconciler struct {
 func (r *ManagedRedisReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
 
-	// CR 가져오기
+	// 1. ManagedRedis CR 가져오기
 	var redis redisv1.ManagedRedis
 	if err := r.Get(ctx, req.NamespacedName, &redis); err != nil {
-		if client.IgnoreNotFound(err) != nil {
-			return ctrl.Result{}, err
+		if errors.IsNotFound(err) {
+			return ctrl.Result{}, nil
 		}
-		return ctrl.Result{}, nil
+		return ctrl.Result{}, err
 	}
 
-	// StatefulSet 생성/업데이트
+	// 2. StatefulSet 생성/업데이트
 	sts := &appsv1.StatefulSet{}
 	err := r.Get(ctx, types.NamespacedName{Name: redis.Name, Namespace: redis.Namespace}, sts)
-	if err != nil {
-		// 존재하지 않으면 새로 생성
+	if err != nil && errors.IsNotFound(err) {
 		sts = &appsv1.StatefulSet{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      redis.Name,
@@ -78,8 +82,8 @@ func (r *ManagedRedisReconciler) Reconcile(ctx context.Context, req ctrl.Request
 			log.Error(err, "Failed to create StatefulSet")
 			return ctrl.Result{}, err
 		}
-	} else {
-		// replicas 변경 등 업데이트
+	} else if err == nil {
+		// replicas 업데이트
 		if sts.Spec.Replicas == nil || *sts.Spec.Replicas != redis.Spec.Replicas {
 			sts.Spec.Replicas = &redis.Spec.Replicas
 			if err := r.Update(ctx, sts); err != nil {
@@ -87,12 +91,14 @@ func (r *ManagedRedisReconciler) Reconcile(ctx context.Context, req ctrl.Request
 				return ctrl.Result{}, err
 			}
 		}
+	} else {
+		return ctrl.Result{}, err
 	}
 
-	// Service 생성/업데이트
+	// 3. Service 생성/업데이트
 	svc := &corev1.Service{}
 	err = r.Get(ctx, types.NamespacedName{Name: redis.Name, Namespace: redis.Namespace}, svc)
-	if err != nil {
+	if err != nil && errors.IsNotFound(err) {
 		svc = &corev1.Service{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      redis.Name,
@@ -109,15 +115,36 @@ func (r *ManagedRedisReconciler) Reconcile(ctx context.Context, req ctrl.Request
 			log.Error(err, "Failed to create Service")
 			return ctrl.Result{}, err
 		}
+	} else if err != nil {
+		return ctrl.Result{}, err
 	}
 
-	// CR status 업데이트
+	// 4. CR status 업데이트
 	redis.Status.Phase = "Running"
 	redis.Status.Endpoint = redis.Name + "." + redis.Namespace + ".svc.cluster.local:6379"
 	if err := r.Status().Update(ctx, &redis); err != nil {
 		log.Error(err, "Failed to update ManagedRedis status")
 		return ctrl.Result{}, err
 	}
+
+	// 5. API 서버로 status 전달
+	statusPayload := map[string]interface{}{
+		"phase":    redis.Status.Phase,
+		"endpoint": redis.Status.Endpoint,
+		"replicas": sts.Status.ReadyReplicas,
+	}
+	body, _ := json.Marshal(statusPayload)
+	apiURL := r.APIBaseURL + "/api/clusters/" + string(redis.UID)
+	reqHttp, _ := http.NewRequest("GET", apiURL, bytes.NewBuffer(body))
+	reqHttp.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(reqHttp)
+	if err != nil {
+		log.Error(err, "failed to send status to API server")
+		return ctrl.Result{Requeue: true}, err
+	}
+	defer resp.Body.Close()
+	log.Info("status sent to API server", "name", string(redis.UID), "statusCode", resp.StatusCode)
 
 	return ctrl.Result{}, nil
 }

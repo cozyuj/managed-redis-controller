@@ -7,12 +7,3 @@ spec:
   version: "7.0"           # Redis 버전
   replicas: 3              # 인스턴스 수 (Primary + Replica)
   mode: REPLICATION        # 운영 모드: SINGLE, REPLICATION, CLUSTER
-
-# status는 컨트롤러가 업데이트
-# 예: 현재 Primary, Replica 정보 및 접속 endpoint
-status:
-  phase: Pending
-  primary: ""
-  replicas: []
-  endpoint: ""
-
