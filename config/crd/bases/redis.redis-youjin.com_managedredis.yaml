@@ -39,6 +39,8 @@ spec:
           spec:
             description: spec defines the desired state of ManagedRedis
             properties:
+              mode:
+                type: string
               replicas:
                 format: int32
                 type: integer
@@ -119,10 +121,43 @@ spec:
                 x-kubernetes-list-map-keys:
                 - type
                 x-kubernetes-list-type: map
-              endpoint:
-                type: string
               phase:
                 type: string
+              primary:
+                properties:
+                  name:
+                    type: string
+                  nodeName:
+                    type: string
+                  podIP:
+                    type: string
+                  role:
+                    type: string
+                  status:
+                    type: string
+                type: object
+              primaryEndpoint:
+                type: string
+              readyReplicas:
+                format: int32
+                type: integer
+              replicaEndpoint:
+                type: string
+              replicas:
+                items:
+                  properties:
+                    name:
+                      type: string
+                    nodeName:
+                      type: string
+                    podIP:
+                      type: string
+                    role:
+                      type: string
+                    status:
+                      type: string
+                  type: object
+                type: array
             type: object
         required:
         - spec

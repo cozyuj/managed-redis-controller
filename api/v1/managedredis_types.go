@@ -35,13 +35,21 @@ type ManagedRedisSpec struct {
 	Version  string `json:"version,omitempty"`
 	Replicas int32  `json:"replicas,omitempty"`
 
+	Mode string `json:"mode,omitempty"`
+
 	// Foo *string `json:"foo,omitempty"`
 }
 
 // ManagedRedisStatus defines the observed state of ManagedRedis.
 type ManagedRedisStatus struct {
-	Phase    string `json:"phase,omitempty"`
-	Endpoint string `json:"endpoint,omitempty"`
+	Phase           string `json:"phase,omitempty"`
+	PrimaryEndpoint string `json:"primaryEndpoint,omitempty"`
+	ReplicaEndpoint string `json:"replicaEndpoint,omitempty"`
+
+	Primary  *RedisNodeInfo  `json:"primary,omitempty"`
+	Replicas []RedisNodeInfo `json:"replicas,omitempty"`
+
+	ReadyReplicas int32 `json:"readyReplicas,omitempty"`
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
@@ -90,6 +98,14 @@ type ManagedRedisList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []ManagedRedis `json:"items"`
+}
+
+type RedisNodeInfo struct {
+	Name     string `json:"name,omitempty"`
+	Role     string `json:"role,omitempty"` // primary / replica
+	PodIP    string `json:"podIP,omitempty"`
+	NodeName string `json:"nodeName,omitempty"`
+	Status   string `json:"status,omitempty"` // Pending / Running / Failed
 }
 
 func init() {
