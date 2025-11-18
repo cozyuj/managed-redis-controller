@@ -49,10 +49,10 @@ func (r *ManagedRedisReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	// ----------------------------------------------------------------------
-	// Finalizer
-	// ----------------------------------------------------------------------
-	if redis.ObjectMeta.DeletionTimestamp.IsZero() {
+	// ========================================================================
+	// Finalizer 처리
+	// ========================================================================
+	if redis.DeletionTimestamp.IsZero() {
 		if !controllerutil.ContainsFinalizer(&redis, finalizerName) {
 			controllerutil.AddFinalizer(&redis, finalizerName)
 			if err := r.Update(ctx, &redis); err != nil {
@@ -60,6 +60,7 @@ func (r *ManagedRedisReconciler) Reconcile(ctx context.Context, req ctrl.Request
 			}
 		}
 	} else {
+		// 삭제 처리
 		pods, _ := r.listPods(ctx, &redis)
 		if err := r.reconcileDelete(ctx, &redis, pods); err != nil {
 			return ctrl.Result{RequeueAfter: 5 * time.Second}, err
@@ -67,53 +68,53 @@ func (r *ManagedRedisReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return ctrl.Result{}, nil
 	}
 
-	// ----------------------------------------------------------------------
+	// ========================================================================
 	// Pod 조회
-	// ----------------------------------------------------------------------
+	// ========================================================================
 	pods, err := r.listPods(ctx, &redis)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
 
-	// ----------------------------------------------------------------------
-	// 서비스 보장 (Primary / Replica)
-	// ----------------------------------------------------------------------
+	// ========================================================================
+	// Primary / Replica Service 생성
+	// ========================================================================
 	if err := r.ensureServices(ctx, &redis); err != nil {
 		return ctrl.Result{}, err
 	}
 
-	// ----------------------------------------------------------------------
-	// Primary 없으면 생성
-	// ----------------------------------------------------------------------
+	// ========================================================================
+	// Primary Pod 생성
+	// ========================================================================
 	if !hasPrimary(pods) {
 		redis.Status.Phase = "CREATING"
-		_ = r.Status().Update(ctx, &redis)
+		if err := r.Status().Update(ctx, &redis); err != nil {
+			return ctrl.Result{}, err
+		}
 
-		err := r.createPod(ctx, &redis, primaryRole)
-		if err != nil {
+		if err := r.createPod(ctx, &redis, primaryRole); err != nil {
 			return ctrl.Result{RequeueAfter: 3 * time.Second}, err
 		}
 		return ctrl.Result{RequeueAfter: 3 * time.Second}, nil
 	}
 
-	// ----------------------------------------------------------------------
-	// Replica 스케일 처리
-	// ----------------------------------------------------------------------
+	// ========================================================================
+	// Replica 스케일링 처리
+	// ========================================================================
 	res, err := r.reconcileReplicas(ctx, &redis, pods)
 	if err != nil || res.Requeue {
 		return res, err
 	}
 
-	// ----------------------------------------------------------------------
+	// ========================================================================
 	// Failover 체크
-	// ----------------------------------------------------------------------
+	// ========================================================================
 	primaryPod := findPrimaryPod(pods)
-	if primaryPod == nil {
-		return ctrl.Result{RequeueAfter: 3 * time.Second}, nil
-	}
-	if isPodUnhealthy(primaryPod) {
+	if primaryPod == nil || isPodUnhealthy(primaryPod) {
 		redis.Status.Phase = "FAILOVER"
-		_ = r.Status().Update(ctx, &redis)
+		if err := r.Status().Update(ctx, &redis); err != nil {
+			return ctrl.Result{}, err
+		}
 
 		if err := r.performFailover(ctx, &redis, pods); err != nil {
 			return ctrl.Result{RequeueAfter: 3 * time.Second}, err
@@ -121,15 +122,20 @@ func (r *ManagedRedisReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return ctrl.Result{RequeueAfter: 3 * time.Second}, nil
 	}
 
-	// ----------------------------------------------------------------------
+	// ========================================================================
 	// 모든 상태 정상 → RUNNING 상태 업데이트
-	// ----------------------------------------------------------------------
+	// ========================================================================
 	r.buildStatus(&redis, pods)
-	_ = r.Status().Update(ctx, &redis)
+	if err := r.Status().Update(ctx, &redis); err != nil {
+		log.Error(err, "failed to update status")
+		return ctrl.Result{}, err
+	}
 
-	// API 서버로 전달
+	// ========================================================================
+	// API 서버에 상태 전달
+	// ========================================================================
 	if err := r.sendStatusToAPIServer(&redis); err != nil {
-		log.Error(err, "failed sending status to API")
+		log.Error(err, "failed sending status to API server")
 		return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
 	}
 
@@ -338,7 +344,7 @@ func (r *ManagedRedisReconciler) buildStatus(redis *redisv1.ManagedRedis, pods [
 func (r *ManagedRedisReconciler) sendStatusToAPIServer(redis *redisv1.ManagedRedis) error {
 
 	body, _ := json.Marshal(redis.Status)
-	url := fmt.Sprintf("%s/api/clusters/%s", r.APIBaseURL, string(redis.UID))
+	url := fmt.Sprintf("%s/api/clusters/%s", r.APIBaseURL, redis.Name)
 
 	req, _ := http.NewRequest(http.MethodPost, url, bytes.NewBuffer(body))
 	req.Header.Set("Content-Type", "application/json")
